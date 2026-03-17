@@ -258,33 +258,33 @@ def _centroid_update(
     """
     Core centroid update using scatter-add.
 
-    Instead of building a (B, K, N) indicator matrix (O(B*K*N) memory),
-    use scatter_add via .at[].add() to accumulate sums directly into
-    a (B, K, D) buffer. Memory: O(B*K*D) vs O(B*K*N).
-
-    When x_f16 is provided, reads from float16 data (halved bandwidth)
-    but accumulates into float32 buffer for precision.
+    Uses a flat scatter_add over all batches simultaneously, avoiding
+    per-batch Python loops and enabling better GPU utilization.
     """
     B, N, D = x.shape
     K = old_centroids.shape[1]
 
-    # Use f16 source data for reduced read bandwidth when available
     x_src = x_f16 if x_f16 is not None else x
     ids = cluster_ids.astype(mx.uint32)  # (B, N)
 
-    results_sums = []
-    results_counts = []
-    for b in range(B):
-        cluster_sums = mx.zeros((K, D), dtype=mx.float32)
-        cluster_counts = mx.zeros((K,), dtype=mx.float32)
-        idx = ids[b]  # (N,)
-        cluster_sums = cluster_sums.at[idx].add(x_src[b])
-        cluster_counts = cluster_counts.at[idx].add(mx.ones((N,), dtype=mx.float32))
-        results_sums.append(cluster_sums)
-        results_counts.append(cluster_counts)
+    # Flatten across batches: offset cluster IDs per batch so each batch
+    # writes to its own slice of the (B*K, D) accumulation buffer.
+    x_flat = x_src.reshape(B * N, D)     # (BN, D)
+    if B > 1:
+        batch_offsets = (mx.arange(B) * K).astype(mx.uint32)[:, None]  # (B, 1)
+        ids_flat = (ids + batch_offsets).reshape(B * N)
+    else:
+        ids_flat = ids.reshape(B * N)
 
-    all_sums = mx.stack(results_sums)      # (B, K, D)
-    all_counts = mx.stack(results_counts)   # (B, K)
+    # Single scatter_add for sums and counts
+    cluster_sums = mx.zeros((B * K, D), dtype=mx.float32)
+    cluster_sums = cluster_sums.at[ids_flat].add(x_flat)
+
+    cluster_counts = mx.zeros((B * K,), dtype=mx.float32)
+    cluster_counts = cluster_counts.at[ids_flat].add(mx.ones((B * N,), dtype=mx.float32))
+
+    all_sums = cluster_sums.reshape(B, K, D)
+    all_counts = cluster_counts.reshape(B, K)
 
     return _finalize_centroids(
         all_sums, all_counts, old_centroids, x.dtype, normalize
