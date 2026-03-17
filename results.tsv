@@ -1,0 +1,3 @@
+experiment	total_s	per_iter_ms	n_iters	inertia	notes
+baseline_scatter_add	1.914	19.1	100	58134100	scatter_add centroid update, mx.compile, full NxK matmul assign
+f16_assign	1.597	16.0	100	58135264	float16 matmul+score for assign step, f32 centroid update

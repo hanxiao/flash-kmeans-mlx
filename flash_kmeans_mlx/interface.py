@@ -153,7 +153,8 @@ class FlashKMeans:
 
         if self.metric == "euclidean":
             x_sq = (x_b.astype(mx.float32) * x_b.astype(mx.float32)).sum(axis=-1)
-            labels_b = euclid_assign(x_b, self.centroids_b, x_sq)
+            x_f16 = x_b.astype(mx.float16)
+            labels_b = euclid_assign(x_b, self.centroids_b, x_sq, x_f16=x_f16)
         elif self.metric in ("cosine", "dot"):
             from flash_kmeans_mlx.ops import l2_normalize, cosine_assign, dot_assign
             if self.metric == "cosine":

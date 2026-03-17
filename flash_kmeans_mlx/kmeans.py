@@ -22,8 +22,8 @@ from flash_kmeans_mlx.ops import (
 # Single-iteration helpers
 # ---------------------------------------------------------------------------
 
-def _euclid_iter(x, x_sq, centroids):
-    cluster_ids = euclid_assign(x, centroids, x_sq)
+def _euclid_iter(x, x_sq, centroids, x_f16=None):
+    cluster_ids = euclid_assign(x, centroids, x_sq, x_f16=x_f16)
     centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
     diff = (centroids_new.astype(mx.float32) - centroids.astype(mx.float32))
     shift = mx.sqrt((diff * diff).sum(axis=-1)).max()
@@ -55,10 +55,15 @@ def _dot_iter(x, centroids):
 _compiled_cache = {}
 
 
-def _get_compiled_euclid_iter(B, N, D, K):
-    key = ("euclid", B, N, D, K)
+def _get_compiled_euclid_iter(B, N, D, K, use_f16=False):
+    key = ("euclid", B, N, D, K, use_f16)
     if key not in _compiled_cache:
-        _compiled_cache[key] = mx.compile(_euclid_iter)
+        if use_f16:
+            def _iter_f16(x, x_sq, centroids, x_f16):
+                return _euclid_iter(x, x_sq, centroids, x_f16=x_f16)
+            _compiled_cache[key] = mx.compile(_iter_f16)
+        else:
+            _compiled_cache[key] = mx.compile(_euclid_iter)
     return _compiled_cache[key]
 
 
@@ -122,17 +127,29 @@ def batch_kmeans_Euclid(
 
     x_sq = (x.astype(mx.float32) * x.astype(mx.float32)).sum(axis=-1)  # (B, N)
 
+    # Pre-compute float16 copy for fast assignment matmul
+    x_f16 = x.astype(mx.float16)
+
     if init_centroids is None:
         centroids = _init_centroids(x, n_clusters)
     else:
         centroids = init_centroids
     centroids = centroids.reshape(B, n_clusters, D)
 
-    iter_fn = (_get_compiled_euclid_iter(B, N, D, n_clusters)
-               if compiled else _euclid_iter)
+    if compiled:
+        iter_fn = _get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True)
+    else:
+        iter_fn = None
 
     for it in range(max_iters):
-        centroids_new, shift, cluster_ids = iter_fn(x, x_sq, centroids)
+        if compiled:
+            centroids_new, shift, cluster_ids = iter_fn(
+                x, x_sq, centroids, x_f16
+            )
+        else:
+            centroids_new, shift, cluster_ids = _euclid_iter(
+                x, x_sq, centroids, x_f16=x_f16
+            )
         mx.eval(centroids_new, shift, cluster_ids)
 
         if verbose:
