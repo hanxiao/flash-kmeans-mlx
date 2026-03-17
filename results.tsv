@@ -28,3 +28,8 @@ block_masked_mm_coarse	-	-	-	-	DISCARD	block_masked_mm top-2/4/6: 7.7-8.5ms, 13-
 f16_centroid_storage	-	-	-	-	DISCARD	f16 centroids (skip f32 cast): no gain, compiler overlaps cast with previous ops
 transposed_layout	-	-	-	-	DISCARD	(K,D)@(D,N) vs (N,D)@(D,K): 6.5ms vs 5.9ms, standard layout is optimal
 n_split_pipelining	-	-	-	-	DISCARD	2/4 N-splits to overlap addmm/argmax: 7.43ms vs 7.47ms, marginal from half-size overlap
+fused_metal_matmul_argmax	-	-	-	-	DISCARD	custom Metal tiled matmul+argmax: 46ms vs 7.6ms, compute shaders 6x slower than AMX hardware matmul
+bf16_matmul_pipeline	-	10.4	-	-	DISCARD	bf16 addmm in compiled pipeline: 10.4ms/iter vs 7.65ms, bf16->f16 cast for argmax adds overhead
+qqmm_mxfp8_nvfp4	-	-	-	-	DISCARD	mx.qqmm mxfp8/nvfp4: NYI on M3 architecture, requires newer hardware
+multi_stream_execution	-	8.2	-	-	DISCARD	separate GPU streams for assign/update: 8.2ms vs 7.7ms uncompiled, stream overhead dominates
+vec8_vec16_argmax	-	-	-	-	DISCARD	vec8 (1.74ms) and vec16 (1.73ms) loads vs vec4 (1.69ms): wider loads no gain, bandwidth-limited
