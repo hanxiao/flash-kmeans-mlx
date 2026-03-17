@@ -72,3 +72,14 @@ baseline	7.5	149	20	11452316	indicator matmul, mx.compile
 5. Keep all changes in git with descriptive commits
 6. Do NOT introduce scipy, torch, or any non-MLX compute dependency
 7. Minimum 10 runs of benchmark for stability before claiming improvement
+
+## CRITICAL: Record EVERY experiment (added 2026-03-17)
+You are NOT following the rules. You've done dozens of micro-benchmarks internally but only written 2 entries to results.tsv. This defeats the purpose of autoresearch.
+
+**STRICT PROTOCOL:**
+1. EVERY optimization attempt MUST be recorded in results.tsv immediately after benchmarking
+2. Use the FULL benchmark script (N=500K, K=1000, 100 iters, 10 runs) - no inline micro-benchmarks as substitutes
+3. If an experiment doesn't improve total_s, record it anyway with status DISCARD in notes
+4. `cat results.tsv` at the START of every iteration to review history
+5. Analysis-only entries (no benchmark run) use `-` for numeric fields
+6. STOP doing long analysis chains. The cycle is: hypothesize -> implement -> benchmark -> record -> next

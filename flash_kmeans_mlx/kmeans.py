@@ -30,6 +30,13 @@ def _euclid_iter(x, x_sq, centroids, x_f16=None):
     return centroids_new, shift, cluster_ids
 
 
+def _euclid_iter_no_shift(x, x_sq, centroids, x_f16=None):
+    """Iteration without shift computation - for tol=0 fast path."""
+    cluster_ids = euclid_assign(x, centroids, x_sq, x_f16=x_f16)
+    centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
+    return centroids_new, cluster_ids
+
+
 def _cosine_iter(x_norm, centroids):
     cluster_ids = cosine_assign(x_norm, centroids)
     centroids_new = centroid_update_cosine(x_norm, cluster_ids, centroids)
@@ -55,10 +62,16 @@ def _dot_iter(x, centroids):
 _compiled_cache = {}
 
 
-def _get_compiled_euclid_iter(B, N, D, K, use_f16=False):
-    key = ("euclid", B, N, D, K, use_f16)
+def _get_compiled_euclid_iter(B, N, D, K, use_f16=False, no_shift=False):
+    key = ("euclid", B, N, D, K, use_f16, no_shift)
     if key not in _compiled_cache:
-        if use_f16:
+        if no_shift and use_f16:
+            def _iter_ns_f16(x, x_sq, centroids, x_f16):
+                return _euclid_iter_no_shift(x, x_sq, centroids, x_f16=x_f16)
+            _compiled_cache[key] = mx.compile(_iter_ns_f16)
+        elif no_shift:
+            _compiled_cache[key] = mx.compile(_euclid_iter_no_shift)
+        elif use_f16:
             def _iter_f16(x, x_sq, centroids, x_f16):
                 return _euclid_iter(x, x_sq, centroids, x_f16=x_f16)
             _compiled_cache[key] = mx.compile(_iter_f16)
@@ -136,27 +149,43 @@ def batch_kmeans_Euclid(
         centroids = init_centroids
     centroids = centroids.reshape(B, n_clusters, D)
 
-    if compiled:
-        iter_fn = _get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True)
+    # Fast path: when tol <= 0 and not verbose, skip shift computation
+    needs_shift = tol > 0 or verbose
+
+    if needs_shift:
+        iter_fn = (_get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True)
+                   if compiled else None)
+        for it in range(max_iters):
+            if compiled:
+                centroids_new, shift, cluster_ids = iter_fn(
+                    x, x_sq, centroids, x_f16
+                )
+            else:
+                centroids_new, shift, cluster_ids = _euclid_iter(
+                    x, x_sq, centroids, x_f16=x_f16
+                )
+            mx.eval(centroids_new, shift, cluster_ids)
+
+            if verbose:
+                print(f"Iter {it}, center shift: {shift.item():.6f}")
+            if shift.item() < tol:
+                break
+            centroids = centroids_new
     else:
-        iter_fn = None
-
-    for it in range(max_iters):
-        if compiled:
-            centroids_new, shift, cluster_ids = iter_fn(
-                x, x_sq, centroids, x_f16
-            )
-        else:
-            centroids_new, shift, cluster_ids = _euclid_iter(
-                x, x_sq, centroids, x_f16=x_f16
-            )
-        mx.eval(centroids_new, shift, cluster_ids)
-
-        if verbose:
-            print(f"Iter {it}, center shift: {shift.item():.6f}")
-        if shift.item() < tol:
-            break
-        centroids = centroids_new
+        iter_fn = (_get_compiled_euclid_iter(
+                       B, N, D, n_clusters, use_f16=True, no_shift=True)
+                   if compiled else None)
+        for it in range(max_iters):
+            if compiled:
+                centroids_new, cluster_ids = iter_fn(
+                    x, x_sq, centroids, x_f16
+                )
+            else:
+                centroids_new, cluster_ids = _euclid_iter_no_shift(
+                    x, x_sq, centroids, x_f16=x_f16
+                )
+            mx.eval(centroids_new, cluster_ids)
+            centroids = centroids_new
 
     return cluster_ids, centroids, it + 1
 

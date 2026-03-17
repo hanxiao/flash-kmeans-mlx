@@ -46,9 +46,12 @@ def euclid_assign(
     # Use float16 fast path when available
     if x_f16 is not None:
         c_f16 = centroids.astype(mx.float16)
-        c_sq = (c_f16 * c_f16).sum(axis=-1)  # (B, K) in f16
-        cross = x_f16 @ mx.transpose(c_f16, axes=(0, 2, 1))
-        score = cross - 0.5 * c_sq[:, None, :]
+        ct = mx.transpose(c_f16, axes=(0, 2, 1))            # (B, D, K)
+        c_sq = (c_f16 * c_f16).sum(axis=-1)                 # (B, K)
+        c_bias = (-0.5 * c_sq).astype(mx.float16)[:, None, :]  # (B, 1, K)
+        # addmm fuses the bias addition into the matmul kernel, avoiding a
+        # separate pass over the full NxK score matrix.
+        score = mx.addmm(c_bias, x_f16, ct)                 # (B, N, K)
         return mx.argmax(score, axis=-1).astype(mx.uint32)
 
     c_sq = (centroids * centroids).sum(axis=-1)  # (B, K)
