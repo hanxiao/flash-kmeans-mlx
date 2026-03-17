@@ -4,9 +4,13 @@
 Optimize flash-kmeans-mlx speed on Apple Silicon (M3 Ultra) without quality loss. No non-MLX library dependencies (only mlx, numpy).
 
 ## Current state
-- Baseline: 1.296s (13.0ms/iter) for N=500K, D=128, K=1000, B=1, 100 iters on M3 Ultra
-- Already implemented: mx.addmm fused assign, no-shift fast path, f16 assign matmul
-- Gap to H200 Flash-KMeans (Triton): ~5-30x depending on config (batched scenarios worse)
+- Optimized: 0.766s (7.7ms/iter) for N=500K, D=128, K=1000, B=1, 100 iters on M3 Ultra
+- Baseline was: 1.296s (13.0ms/iter) - achieved 41% speedup (1.69x)
+- 57x faster than sklearn KMeans on same hardware
+- At hardware limit: addmm 5.9ms (80% of 27 TFLOPS f16 peak) + Metal argmax 1.67ms (95% of achievable BW)
+- Theoretical floor: 7.57ms/iter, current: 7.65ms/iter (within 1%)
+- 39 experiments conducted (9 KEEP, 30 DISCARD) - see results.tsv
+- Gap to H200 Flash-KMeans (Triton): ~5-30x depending on config
 - Gap to H200 fast_pytorch_kmeans: ~2-3x
 
 ## Reference code
