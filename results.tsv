@@ -14,3 +14,4 @@ squeeze_2d_matmul	0.881	8.8	100	58128040	DISCARD	2D matmul (squeeze batch): no g
 f32_centroid_source	0.862	8.6	100	58151196	KEEP	f32 scatter_add source (skip f16->f32 conversion): 2% faster
 multi_iter_compiled	0.787	7.9	100	58130460	KEEP	all iters inside one mx.compile call: 9% faster, cross-iter optimization
 n_chunked_pipelining	0.800	8.0	100	-	DISCARD	N-chunked 50K/100K/250K: all slower, matmul most efficient at full N
+q8_quantized_matmul	1.051	10.5	100	-	DISCARD	quantize+q8_matmul: quantization overhead (0.6ms) > matmul savings (0.5ms)
