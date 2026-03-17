@@ -20,3 +20,4 @@ fused_simdgroup_matmul_argmax	-	14.6	-	-	DISCARD	simdgroup_matrix fused matmul+a
 contiguous_transpose	0.771	7.7	100	58148472	KEEP	mx.contiguous on transposed centroids: 2% faster addmm with contiguous memory layout
 fused_argmax_bias	0.769	7.7	100	58138928	DISCARD	matmul + fused argmax+bias vs addmm + argmax: <0.5% diff, not worth the complexity
 flat_scatter_centroid	0.770	7.7	100	58129904	KEEP	flat scatter_add (no per-batch loop): 45% faster standalone, same compiled; cleaner code
+argmax_tg32	0.765	7.7	100	58137416	KEEP	threadgroup 32 for Metal argmax: 5% faster argmax (1.67ms vs 1.75ms), 0.7% faster overall

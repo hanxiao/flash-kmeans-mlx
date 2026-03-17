@@ -60,7 +60,7 @@ def _fast_argmax_f16(scores, B, N, K):
     """Fast argmax over axis=-1 for (B, N, K) f16 scores using custom Metal kernel."""
     total_rows = B * N
     kernel = _get_metal_argmax(total_rows, K)
-    THREADS = 1024
+    THREADS = 32
     grid_size = ((total_rows + THREADS - 1) // THREADS) * THREADS
     flat_scores = scores.reshape(total_rows, K)
     out = kernel(
