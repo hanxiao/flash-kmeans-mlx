@@ -15,15 +15,20 @@ Study the original Triton implementation in `flash_kmeans_reference/`:
 - `centroid_update_triton.py`: sorted-index centroid accumulation (avoids O(B*K*N) indicator matrix)
 - `kmeans_triton_impl.py`: iteration loop
 
-## Optimization strategies to try (ONE AT A TIME)
-1. **Sorted-index centroid update**: argsort cluster_ids, then segment-sum for centroids. Avoids the O(B*K*N) indicator matmul. Use `mx.argsort` + cumulative segment sums
+## Optimization strategies (starting points, NOT exhaustive)
+These are initial directions to explore. You are NOT limited to this list -- study the Triton reference code, read MLX docs, invent your own strategies, and follow whatever promising leads you discover during experimentation.
+
+Starting ideas:
+1. **Sorted-index centroid update**: argsort cluster_ids, then segment-sum for centroids. Avoids the O(B*K*N) indicator matmul
 2. **Chunked/tiled distance computation**: compute distances in N-tiles to reduce peak memory and improve cache usage
-3. **Deferred evaluation**: eval every N iterations instead of every iteration (test N=2,3,5,10)
+3. **Deferred evaluation**: eval every N iterations instead of every iteration
 4. **Batch-parallel optimization**: current batched perf is poor. Profile B=8,32 and optimize
 5. **Mixed precision centroid update**: f16 accumulation where safe
 6. **Memory pre-allocation**: reuse buffers across iterations instead of allocating new tensors
 7. **mx.fast operations**: explore mx.fast.* for any applicable fused ops
 8. **Reduce Python overhead**: minimize per-iteration Python calls, maximize compiled graph coverage
+
+Beyond these: explore MLX metal kernels, custom ops, algorithmic reformulations, or any other idea you come up with. The goal is speed -- be creative.
 
 ## Benchmark (MANDATORY for every experiment)
 ```bash

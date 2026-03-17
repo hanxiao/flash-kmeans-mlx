@@ -154,24 +154,23 @@ def centroid_update_euclid(
     x: mx.array,
     cluster_ids: mx.array,
     old_centroids: mx.array,
+    x_f16: mx.array = None,
 ) -> mx.array:
     """
     Recompute centroids as the mean of assigned points (Euclidean mode).
 
-    Uses sorted-index accumulation: sort points by cluster id, then use
-    contiguous slices for efficient summation via matmul with a one-hot matrix
-    built per batch. For large K this is more memory-friendly than a full
-    (N, K) one-hot.
+    Uses scatter-add accumulation for memory efficiency.
 
     Args:
         x: (B, N, D) input points
         cluster_ids: (B, N) uint32 assignments
         old_centroids: (B, K, D) previous centroids (used for empty clusters)
+        x_f16: (B, N, D) optional float16 copy for reduced read bandwidth
 
     Returns:
         centroids_new: (B, K, D)
     """
-    return _centroid_update(x, cluster_ids, old_centroids, normalize=False)
+    return _centroid_update(x, cluster_ids, old_centroids, normalize=False, x_f16=x_f16)
 
 
 def centroid_update_cosine(
@@ -188,6 +187,7 @@ def _centroid_update(
     cluster_ids: mx.array,
     old_centroids: mx.array,
     normalize: bool,
+    x_f16: mx.array = None,
 ) -> mx.array:
     """
     Core centroid update using scatter-add.
@@ -195,11 +195,15 @@ def _centroid_update(
     Instead of building a (B, K, N) indicator matrix (O(B*K*N) memory),
     use scatter_add via .at[].add() to accumulate sums directly into
     a (B, K, D) buffer. Memory: O(B*K*D) vs O(B*K*N).
+
+    When x_f16 is provided, reads from float16 data (halved bandwidth)
+    but accumulates into float32 buffer for precision.
     """
     B, N, D = x.shape
     K = old_centroids.shape[1]
 
-    x_f32 = x.astype(mx.float32)
+    # Use f16 source data for reduced read bandwidth when available
+    x_src = x_f16 if x_f16 is not None else x
     ids = cluster_ids.astype(mx.uint32)  # (B, N)
 
     results_sums = []
@@ -208,7 +212,7 @@ def _centroid_update(
         cluster_sums = mx.zeros((K, D), dtype=mx.float32)
         cluster_counts = mx.zeros((K,), dtype=mx.float32)
         idx = ids[b]  # (N,)
-        cluster_sums = cluster_sums.at[idx].add(x_f32[b])
+        cluster_sums = cluster_sums.at[idx].add(x_src[b])
         cluster_counts = cluster_counts.at[idx].add(mx.ones((N,), dtype=mx.float32))
         results_sums.append(cluster_sums)
         results_counts.append(cluster_counts)

@@ -24,7 +24,7 @@ from flash_kmeans_mlx.ops import (
 
 def _euclid_iter(x, x_sq, centroids, x_f16=None):
     cluster_ids = euclid_assign(x, centroids, x_sq, x_f16=x_f16)
-    centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
+    centroids_new = centroid_update_euclid(x, cluster_ids, centroids, x_f16=x_f16)
     diff = (centroids_new.astype(mx.float32) - centroids.astype(mx.float32))
     shift = mx.sqrt((diff * diff).sum(axis=-1)).max()
     return centroids_new, shift, cluster_ids
@@ -33,7 +33,7 @@ def _euclid_iter(x, x_sq, centroids, x_f16=None):
 def _euclid_iter_no_shift(x, x_sq, centroids, x_f16=None):
     """Iteration without shift computation - for tol=0 fast path."""
     cluster_ids = euclid_assign(x, centroids, x_sq, x_f16=x_f16)
-    centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
+    centroids_new = centroid_update_euclid(x, cluster_ids, centroids, x_f16=x_f16)
     return centroids_new, cluster_ids
 
 
