@@ -82,6 +82,19 @@ def _get_compiled_euclid_iter(B, N, D, K, use_f16=False, no_shift=False):
     return _compiled_cache[key]
 
 
+def _get_compiled_euclid_multi_iter(B, N, D, K, n_iters, use_f16=True):
+    """Get a compiled function that runs n_iters iterations internally."""
+    key = ("euclid_multi", B, N, D, K, n_iters, use_f16)
+    if key not in _compiled_cache:
+        def _multi_iter(x, x_sq, centroids, x_f16):
+            for _ in range(n_iters):
+                cluster_ids = euclid_assign(x, centroids, x_sq, x_f16=x_f16)
+                centroids = centroid_update_euclid(x, cluster_ids, centroids)
+            return centroids, cluster_ids
+        _compiled_cache[key] = mx.compile(_multi_iter)
+    return _compiled_cache[key]
+
+
 def _get_compiled_cosine_iter(B, N, D, K):
     key = ("cosine", B, N, D, K)
     if key not in _compiled_cache:
@@ -174,22 +187,24 @@ def batch_kmeans_Euclid(
                 break
             centroids = centroids_new
     else:
-        iter_fn = (_get_compiled_euclid_iter(
-                       B, N, D, n_clusters, use_f16=True, no_shift=True)
-                   if compiled else None)
-        eval_every = 10
-        for it in range(max_iters):
-            if compiled:
-                centroids_new, cluster_ids = iter_fn(
-                    x, x_sq, centroids, x_f16
-                )
-            else:
+        if compiled:
+            # Use multi-iteration compiled function for maximum throughput.
+            # Runs all iterations inside a single compiled graph, enabling
+            # cross-iteration optimization by the MLX compiler.
+            multi_fn = _get_compiled_euclid_multi_iter(
+                B, N, D, n_clusters, max_iters, use_f16=True)
+            centroids, cluster_ids = multi_fn(x, x_sq, centroids, x_f16)
+            mx.eval(centroids, cluster_ids)
+            it = max_iters - 1
+        else:
+            eval_every = 10
+            for it in range(max_iters):
                 centroids_new, cluster_ids = _euclid_iter_no_shift(
                     x, x_sq, centroids, x_f16=x_f16
                 )
-            if (it + 1) % eval_every == 0 or it == max_iters - 1:
-                mx.eval(centroids_new, cluster_ids)
-            centroids = centroids_new
+                if (it + 1) % eval_every == 0 or it == max_iters - 1:
+                    mx.eval(centroids_new, cluster_ids)
+                centroids = centroids_new
 
     return cluster_ids, centroids, it + 1
 
