@@ -1,48 +1,38 @@
 # flash-kmeans-mlx autoresearch
 
 ## Goal
-Optimize flash-kmeans-mlx speed on Apple Silicon (M3 Ultra) without quality loss. No non-MLX library dependencies (only mlx, numpy). Study the original Flash-KMeans paper and Triton implementation deeply to port algorithmic insights.
+Optimize flash-kmeans-mlx speed on Apple Silicon (M3 Ultra) without quality loss. No non-MLX library dependencies (only mlx, numpy).
 
-## Background
-- Original: https://github.com/svg-project/flash-kmeans (Triton/CUDA kernels)
-- Paper: https://arxiv.org/abs/2603.09229 (IO-aware batched K-Means)
-- Current MLX port uses indicator-matmul for centroid updates and standard distance matmul for assignment
-- The original paper's key insight is IO-awareness: minimizing HBM<->SRAM data movement via tiled/blocked computation
-- The Triton kernels use block-sparse patterns, sorted-index accumulation, and fused assign+update
-- Current MLX implementation does NOT exploit these optimizations yet
+## Current state
+- Baseline: 1.296s (13.0ms/iter) for N=500K, D=128, K=1000, B=1, 100 iters on M3 Ultra
+- Already implemented: mx.addmm fused assign, no-shift fast path, f16 assign matmul
+- Gap to H200 Flash-KMeans (Triton): ~5-30x depending on config (batched scenarios worse)
+- Gap to H200 fast_pytorch_kmeans: ~2-3x
 
-## Reference code to study
-Read these files from the original repo (in flash_kmeans/ reference directory if present, or clone fresh):
-- `assign_euclid_triton.py`: Triton kernel for distance computation + assignment in one fused pass
-- `centroid_update_triton.py`: Triton kernel for sorted-index centroid accumulation (avoids full indicator matrix)
-- `kmeans_triton_impl.py`: The iteration loop and heuristic config selection
-- The paper itself (fetch via web if needed): tiling strategy, IO complexity analysis
+## Reference code
+Study the original Triton implementation in `flash_kmeans_reference/`:
+- `assign_euclid_triton.py`: fused distance+assignment kernel
+- `centroid_update_triton.py`: sorted-index centroid accumulation (avoids O(B*K*N) indicator matrix)
+- `kmeans_triton_impl.py`: iteration loop
 
-## Key optimization directions
-1. **Fused assign+update**: Currently two separate matmuls. Can we restructure to reduce memory traffic?
-2. **Sorted-index centroid update**: The original uses argsort by cluster_id then contiguous accumulation, avoiding the O(B*K*N) indicator matrix. MLX has `mx.argsort` - implement this.
-3. **mx.compile optimization**: Ensure iteration functions have fixed shapes for compilation. Profile compiled vs uncompiled.
-4. **Memory layout**: The indicator matmul approach allocates O(B*K*N) float32. For N=500K K=1000 this is 2GB. The sorted approach is O(B*N) extra.
-5. **Half precision**: Test float16 compute with float32 accumulation for centroid sums.
-6. **Chunked distance computation**: For very large N*K, compute distances in tiles to stay in GPU cache.
-7. **mx.fast operations**: Check if mx.fast.scaled_dot_product_attention or other fused ops help for the distance matmul.
+## Optimization strategies to try (ONE AT A TIME)
+1. **Sorted-index centroid update**: argsort cluster_ids, then segment-sum for centroids. Avoids the O(B*K*N) indicator matmul. Use `mx.argsort` + cumulative segment sums
+2. **Chunked/tiled distance computation**: compute distances in N-tiles to reduce peak memory and improve cache usage
+3. **Deferred evaluation**: eval every N iterations instead of every iteration (test N=2,3,5,10)
+4. **Batch-parallel optimization**: current batched perf is poor. Profile B=8,32 and optimize
+5. **Mixed precision centroid update**: f16 accumulation where safe
+6. **Memory pre-allocation**: reuse buffers across iterations instead of allocating new tensors
+7. **mx.fast operations**: explore mx.fast.* for any applicable fused ops
+8. **Reduce Python overhead**: minimize per-iteration Python calls, maximize compiled graph coverage
 
-## Benchmark script
+## Benchmark (MANDATORY for every experiment)
 ```bash
 cd /Users/hanxiao/.openclaw/workspace/flash-kmeans-mlx
-# Create venv if needed
-python3 -m venv .venv && source .venv/bin/activate && pip install -e '.[benchmark]'
-
-# Primary benchmark (use this for results.tsv)
-# USE LARGE SCALE + MANY ITERATIONS for stable measurements
-python -m flash_kmeans_mlx.benchmark --n 500000 --d 128 --k 1000 --max-iters 100 --runs 5 --warmup 2
+source .venv/bin/activate
+python -m flash_kmeans_mlx.benchmark --n 500000 --d 128 --k 1000 --max-iters 100 --runs 10 --warmup 2
 ```
 
-Record TOTAL time in seconds as the primary metric (not per-iter ms, too noisy).
-Per-iter can be secondary. Use N=500K, K=1000, 100 iters for all experiments.
-
-## Correctness gate
-After each change, verify correctness:
+## Correctness gate (MANDATORY before recording)
 ```python
 import numpy as np, mlx.core as mx
 from flash_kmeans_mlx import batch_kmeans_Euclid
@@ -58,28 +48,20 @@ print(f"Inertia: {inertia:.0f}")
 ```
 
 ## Results tracking
-Append each experiment to results.tsv:
+Append each experiment to results.tsv with columns:
 ```
-experiment	per_iter_ms	total_ms	n_iters	inertia	notes
-baseline	7.5	149	20	11452316	indicator matmul, mx.compile
+experiment	total_s	per_iter_ms	n_iters	inertia	status	notes
 ```
+status: KEEP or DISCARD
 
-## Rules
-1. Read results.tsv at start of each iteration to review history
-2. ONE change per experiment. Benchmark. Record. Decide keep/discard.
-3. If 5 consecutive discards, try a fundamentally different approach (escape strategy)
-4. Run correctness check before recording results
-5. Keep all changes in git with descriptive commits
-6. Do NOT introduce scipy, torch, or any non-MLX compute dependency
-7. Minimum 10 runs of benchmark for stability before claiming improvement
-
-## CRITICAL: Record EVERY experiment (added 2026-03-17)
-You are NOT following the rules. You've done dozens of micro-benchmarks internally but only written 2 entries to results.tsv. This defeats the purpose of autoresearch.
-
-**STRICT PROTOCOL:**
-1. EVERY optimization attempt MUST be recorded in results.tsv immediately after benchmarking
-2. Use the FULL benchmark script (N=500K, K=1000, 100 iters, 10 runs) - no inline micro-benchmarks as substitutes
-3. If an experiment doesn't improve total_s, record it anyway with status DISCARD in notes
-4. `cat results.tsv` at the START of every iteration to review history
-5. Analysis-only entries (no benchmark run) use `-` for numeric fields
-6. STOP doing long analysis chains. The cycle is: hypothesize -> implement -> benchmark -> record -> next
+## ABSOLUTE RULES (violation = failure)
+1. **EVERY experiment MUST be recorded in results.tsv** - no exceptions, no "micro-benchmarks" that skip recording
+2. The cycle is: hypothesize -> implement ONE change -> run FULL benchmark (10 runs) -> run correctness check -> record in results.tsv -> git commit -> next
+3. `cat results.tsv` at the START of every iteration to review history
+4. NO inline micro-benchmarks as substitutes for the full benchmark
+5. NO long analysis chains without recording results
+6. If improvement: KEEP, commit code, move to next strategy
+7. If no improvement: DISCARD, revert code, record anyway, move to next strategy
+8. If 5 consecutive DISCARDs, try a fundamentally different approach
+9. Do NOT introduce scipy, torch, or any non-MLX compute dependency
+10. Keep all changes in git with descriptive commits
