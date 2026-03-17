@@ -10,7 +10,18 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
-    { name = "Han Xiao" },
+    { name = "Han Xiao", email = "han.xiao@jina.ai" },
+]
+keywords = [
+    "kmeans", "clustering", "mlx", "apple-silicon", "gpu",
+    "machine-learning", "metal", "batch-kmeans", "unsupervised-learning",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
 ]
 dependencies = [
     "mlx>=0.22",
@@ -21,7 +32,9 @@ dependencies = [
 benchmark = ["scikit-learn"]
 
 [project.urls]
+Homepage = "https://github.com/hanxiao/flash-kmeans-mlx"
 Repository = "https://github.com/hanxiao/flash-kmeans-mlx"
+Issues = "https://github.com/hanxiao/flash-kmeans-mlx/issues"
 
 [tool.setuptools.packages.find]
 include = ["flash_kmeans_mlx*"]
