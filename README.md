@@ -2,7 +2,7 @@
 
 IO-aware batched K-Means for Apple Silicon, ported from [Flash-KMeans](https://github.com/svg-project/flash-kmeans) (Triton/CUDA) to pure MLX.
 
-Full Fashion-MNIST (70K samples, 784 dimensions, K=10) clustered in 0.12s on M3 Ultra. Left: K-Means cluster assignments. Right: ground truth labels. Visualization via [mlx-vis](https://github.com/hanxiao/mlx-vis) UMAP.
+Full Fashion-MNIST (70K samples, 784 dimensions, K=10) clustered in 0.12s on M3 Ultra, 6x faster than sklearn (0.74s). Left: K-Means cluster assignments. Right: ground truth labels. Visualization via [mlx-vis](https://github.com/hanxiao/mlx-vis) UMAP.
 
 ![Fashion-MNIST K-Means vs Ground Truth](assets/fmnist-kmeans-comparison.png)
 
