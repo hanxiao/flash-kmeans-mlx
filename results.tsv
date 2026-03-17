@@ -3,3 +3,4 @@ baseline_addmm_noshift	1.296	13.0	100	-	KEEP	addmm fused assign + no-shift fast 
 sorted_index_centroid	1.436	14.4	100	58135796	DISCARD	argsort+sorted scatter_add: 11% slower, argsort overhead dominates
 deferred_eval_10	1.269	12.7	100	58123844	KEEP	eval every 10 iters instead of every iter: 1.9% faster
 b1_fast_path_centroid	1.287	12.9	100	58151024	DISCARD	B=1 skip loop/stack in centroid update: no gain, compiled handles it
+deferred_eval_25_50_100	1.284	12.8	100	58125344	DISCARD	eval_every=25/50/100 all ~1.284s, no gain beyond eval_every=10
