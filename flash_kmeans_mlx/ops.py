@@ -9,6 +9,59 @@ import mlx.core as mx
 
 
 # ---------------------------------------------------------------------------
+# Custom Metal kernels
+# ---------------------------------------------------------------------------
+
+_metal_argmax_cache = {}
+
+
+def _get_metal_argmax(total_rows, K):
+    """Get a cached Metal kernel for fast argmax over axis=-1 on (total_rows, K) f16 data."""
+    key = (total_rows, K)
+    if key not in _metal_argmax_cache:
+        source = f'''
+            uint n = thread_position_in_grid.x;
+            if (n >= {total_rows}u) return;
+            float best_score = -1e30f;
+            uint best_k = 0;
+            uint base = n * {K}u;
+            for (uint k = 0; k < {K}u; k++) {{
+                float val = static_cast<float>(scores[base + k]);
+                if (val > best_score) {{
+                    best_score = val;
+                    best_k = k;
+                }}
+            }}
+            out[n] = best_k;
+        '''
+        _metal_argmax_cache[key] = mx.fast.metal_kernel(
+            name=f'fast_argmax_{total_rows}_{K}',
+            input_names=['scores'],
+            output_names=['out'],
+            source=source,
+        )
+    return _metal_argmax_cache[key]
+
+
+def _fast_argmax_f16(scores, B, N, K):
+    """Fast argmax over axis=-1 for (B, N, K) f16 scores using custom Metal kernel."""
+    total_rows = B * N
+    kernel = _get_metal_argmax(total_rows, K)
+    THREADS = 256
+    grid_size = ((total_rows + THREADS - 1) // THREADS) * THREADS
+    flat_scores = scores.reshape(total_rows, K)
+    out = kernel(
+        inputs=[flat_scores],
+        template=[('T', mx.float16)],
+        grid=(grid_size, 1, 1),
+        threadgroup=(THREADS, 1, 1),
+        output_shapes=[(total_rows,)],
+        output_dtypes=[mx.uint32],
+    )
+    return out[0].reshape(B, N)
+
+
+# ---------------------------------------------------------------------------
 # Assignment kernels
 # ---------------------------------------------------------------------------
 
@@ -52,7 +105,7 @@ def euclid_assign(
         # addmm fuses the bias addition into the matmul kernel, avoiding a
         # separate pass over the full NxK score matrix.
         score = mx.addmm(c_bias, x_f16, ct)                 # (B, N, K)
-        return mx.argmax(score, axis=-1).astype(mx.uint32)
+        return _fast_argmax_f16(score, B, N, K)
 
     c_sq = (centroids * centroids).sum(axis=-1)  # (B, K)
 
