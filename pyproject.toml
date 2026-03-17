@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flash-kmeans-mlx"
+version = "0.1.0"
+description = "IO-aware batched K-Means for Apple Silicon, ported from Flash-KMeans (Triton/CUDA) to pure MLX."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Han Xiao" },
+]
+dependencies = [
+    "mlx>=0.22",
+    "numpy",
+]
+
+[project.optional-dependencies]
+benchmark = ["scikit-learn"]
+
+[project.urls]
+Repository = "https://github.com/hanxiao/flash-kmeans-mlx"
+
+[tool.setuptools.packages.find]
+include = ["flash_kmeans_mlx*"]
