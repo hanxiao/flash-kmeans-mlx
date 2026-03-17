@@ -1,3 +1,0 @@
-experiment	per_iter_ms	total_ms	n_iters	inertia	notes
-baseline	7.5	149	20	11450945	indicator matmul, mx.compile
-scatter_add_update	4.0	80	20	11453413	replace indicator matmul with .at[].add() scatter, O(BKD) vs O(BKN) memory

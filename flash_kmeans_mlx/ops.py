@@ -67,38 +67,35 @@ def _assign_chunk(
     if chunk_size_k > 0 and chunk_size_k < K:
         # Chunked along K
         best_ids = None
-        best_dist = None
+        best_score = None
         for k_start in range(0, K, chunk_size_k):
             k_end = min(k_start + chunk_size_k, K)
             c_chunk = centroids[:, k_start:k_end, :]   # (B, k_chunk, D)
             csq_chunk = c_sq[:, k_start:k_end]          # (B, k_chunk)
 
-            # (B, n, 1) + (B, 1, k_chunk) - 2*(B, n, k_chunk)
             cross = x @ mx.transpose(c_chunk, axes=(0, 2, 1))  # (B, n, k_chunk)
-            dist = (mx.expand_dims(x_sq, axis=-1)
-                    + mx.expand_dims(csq_chunk, axis=-2)
-                    - 2.0 * cross)
+            score = cross - 0.5 * mx.expand_dims(csq_chunk, axis=-2)
 
-            chunk_ids = mx.argmin(dist, axis=-1)  # (B, n)
-            chunk_min = mx.min(dist, axis=-1)     # (B, n)
+            chunk_ids = mx.argmax(score, axis=-1)  # (B, n)
+            chunk_max = mx.max(score, axis=-1)     # (B, n)
 
             if best_ids is None:
                 best_ids = chunk_ids + k_start
-                best_dist = chunk_min
+                best_score = chunk_max
             else:
-                mask = chunk_min < best_dist
+                mask = chunk_max > best_score
                 best_ids = mx.where(mask, chunk_ids + k_start, best_ids)
-                best_dist = mx.where(mask, chunk_min, best_dist)
+                best_score = mx.where(mask, chunk_max, best_score)
 
         return best_ids.astype(mx.uint32)
 
     # Full matmul: (B, N, D) @ (B, D, K) -> (B, N, K)
     cross = x @ mx.transpose(centroids, axes=(0, 2, 1))
-    dist = (mx.expand_dims(x_sq, axis=-1)
-            + mx.expand_dims(c_sq, axis=-2)
-            - 2.0 * cross)
-
-    return mx.argmin(dist, axis=-1).astype(mx.uint32)
+    # Optimization: x_sq is constant across K, so argmin(x_sq + c_sq - 2*cross)
+    # = argmin(c_sq - 2*cross) = argmax(cross - 0.5*c_sq).
+    # This avoids the x_sq broadcast and the full distance matrix.
+    score = cross - 0.5 * mx.expand_dims(c_sq, axis=-2)
+    return mx.argmax(score, axis=-1).astype(mx.uint32)
 
 
 def cosine_assign(x_norm: mx.array, centroids: mx.array) -> mx.array:
