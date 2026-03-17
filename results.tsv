@@ -5,3 +5,5 @@ deferred_eval_10	1.269	12.7	100	58123844	KEEP	eval every 10 iters instead of eve
 b1_fast_path_centroid	1.287	12.9	100	58151024	DISCARD	B=1 skip loop/stack in centroid update: no gain, compiled handles it
 deferred_eval_25_50_100	1.284	12.8	100	58125344	DISCARD	eval_every=25/50/100 all ~1.284s, no gain beyond eval_every=10
 f32_addmm_assign	1.336	13.4	100	58127324	DISCARD	f32 addmm instead of f16: 5% slower, f16 throughput advantage is real
+k_chunked_250	1.484	14.8	100	58138344	DISCARD	K-chunked assign K=250: 17% slower, loop+ops overhead > cache benefit
+k_chunked_500	1.442	14.4	100	58148464	DISCARD	K-chunked assign K=500: 14% slower, same issue
