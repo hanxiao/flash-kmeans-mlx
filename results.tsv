@@ -35,3 +35,4 @@ multi_stream_execution	-	8.2	-	-	DISCARD	separate GPU streams for assign/update:
 vec8_vec16_argmax	-	-	-	-	DISCARD	vec8 (1.74ms) and vec16 (1.73ms) loads vs vec4 (1.69ms): wider loads no gain, bandwidth-limited
 k_padding_small_k	-	-	-	-	DISCARD	K=64 padded to 128: 1.64ms vs 1.17ms/iter, padding overhead > matmul efficiency gain
 3x_scatter_update	0.765	7.6	100	-	DISCARD	3x scatter_add centroid update: same time as 1x, centroid update 100% overlapped with addmm
+ensure_row_contiguous_false	0.766	7.7	100	58140340	DISCARD	ensure_row_contiguous=False on Metal argmax: no gain in compiled pipeline, compiler knows addmm output is contiguous
