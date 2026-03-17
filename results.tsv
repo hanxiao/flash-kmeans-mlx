@@ -33,3 +33,5 @@ bf16_matmul_pipeline	-	10.4	-	-	DISCARD	bf16 addmm in compiled pipeline: 10.4ms/
 qqmm_mxfp8_nvfp4	-	-	-	-	DISCARD	mx.qqmm mxfp8/nvfp4: NYI on M3 architecture, requires newer hardware
 multi_stream_execution	-	8.2	-	-	DISCARD	separate GPU streams for assign/update: 8.2ms vs 7.7ms uncompiled, stream overhead dominates
 vec8_vec16_argmax	-	-	-	-	DISCARD	vec8 (1.74ms) and vec16 (1.73ms) loads vs vec4 (1.69ms): wider loads no gain, bandwidth-limited
+k_padding_small_k	-	-	-	-	DISCARD	K=64 padded to 128: 1.64ms vs 1.17ms/iter, padding overhead > matmul efficiency gain
+3x_scatter_update	0.765	7.6	100	-	DISCARD	3x scatter_add centroid update: same time as 1x, centroid update 100% overlapped with addmm
