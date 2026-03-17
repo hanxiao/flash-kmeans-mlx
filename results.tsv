@@ -11,3 +11,4 @@ metal_argmax	0.876	8.8	100	58141040	KEEP	custom Metal kernel argmax: 31% faster,
 metal_argmax_vec4_tg1024	0.879	8.8	100	58150520	KEEP	vec4 loads + threadgroup 1024: marginal, commit for cleaner code
 metal_atomic_centroid	4.41	-	-	-	DISCARD	Metal atomic centroid update: 2.6x slower than scatter_add (contention)
 squeeze_2d_matmul	0.881	8.8	100	58128040	DISCARD	2D matmul (squeeze batch): no gain in compiled pipeline
+f32_centroid_source	0.862	8.6	100	58151196	KEEP	f32 scatter_add source (skip f16->f32 conversion): 2% faster
