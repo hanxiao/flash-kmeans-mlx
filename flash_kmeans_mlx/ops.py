@@ -112,7 +112,7 @@ def euclid_assign(
     # Use float16 fast path when available
     if x_f16 is not None:
         c_f16 = centroids.astype(mx.float16)
-        ct = mx.transpose(c_f16, axes=(0, 2, 1))            # (B, D, K)
+        ct = mx.contiguous(mx.transpose(c_f16, axes=(0, 2, 1)))  # (B, D, K) contiguous
         c_sq = (c_f16 * c_f16).sum(axis=-1)                 # (B, K)
         c_bias = (-0.5 * c_sq).astype(mx.float16)[:, None, :]  # (B, 1, K)
         # addmm fuses the bias addition into the matmul kernel, avoiding a

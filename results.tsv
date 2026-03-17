@@ -17,3 +17,4 @@ n_chunked_pipelining	0.800	8.0	100	-	DISCARD	N-chunked 50K/100K/250K: all slower
 q8_quantized_matmul	1.051	10.5	100	-	DISCARD	quantize+q8_matmul: quantization overhead (0.6ms) > matmul savings (0.5ms)
 random_projection_d64	-	-	-	-	DISCARD	random projection D=128->64: 93% assignment mismatch, completely unusable despite 2x matmul speedup
 fused_simdgroup_matmul_argmax	-	14.6	-	-	DISCARD	simdgroup_matrix fused matmul+argmax: 2x slower than addmm+argmax (simd units << AMX hardware matmul)
+contiguous_transpose	0.771	7.7	100	58148472	KEEP	mx.contiguous on transposed centroids: 2% faster addmm with contiguous memory layout
