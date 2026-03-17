@@ -1,3 +1,4 @@
 experiment	total_s	per_iter_ms	n_iters	inertia	status	notes
 baseline_addmm_noshift	1.296	13.0	100	-	KEEP	addmm fused assign + no-shift fast path, mx.compile, f16 assign
 sorted_index_centroid	1.436	14.4	100	58135796	DISCARD	argsort+sorted scatter_add: 11% slower, argsort overhead dominates
+deferred_eval_10	1.269	12.7	100	58123844	KEEP	eval every 10 iters instead of every iter: 1.9% faster

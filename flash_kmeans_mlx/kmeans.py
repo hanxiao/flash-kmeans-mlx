@@ -175,6 +175,7 @@ def batch_kmeans_Euclid(
         iter_fn = (_get_compiled_euclid_iter(
                        B, N, D, n_clusters, use_f16=True, no_shift=True)
                    if compiled else None)
+        eval_every = 10
         for it in range(max_iters):
             if compiled:
                 centroids_new, cluster_ids = iter_fn(
@@ -184,7 +185,8 @@ def batch_kmeans_Euclid(
                 centroids_new, cluster_ids = _euclid_iter_no_shift(
                     x, x_sq, centroids, x_f16=x_f16
                 )
-            mx.eval(centroids_new, cluster_ids)
+            if (it + 1) % eval_every == 0 or it == max_iters - 1:
+                mx.eval(centroids_new, cluster_ids)
             centroids = centroids_new
 
     return cluster_ids, centroids, it + 1
