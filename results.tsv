@@ -37,3 +37,5 @@ k_padding_small_k	-	-	-	-	DISCARD	K=64 padded to 128: 1.64ms vs 1.17ms/iter, pad
 3x_scatter_update	0.765	7.6	100	-	DISCARD	3x scatter_add centroid update: same time as 1x, centroid update 100% overlapped with addmm
 ensure_row_contiguous_false	0.766	7.7	100	58140340	DISCARD	ensure_row_contiguous=False on Metal argmax: no gain in compiled pipeline, compiler knows addmm output is contiguous
 precomputed_ct_bias	0.765	7.7	100	-	DISCARD	move f16 cast/transpose/c_sq into centroid update: no gain, compiler already overlaps these with argmax
+hadamard_dim_reduction	-	-	-	-	DISCARD	Hadamard D=128->64: 13.7% match, D=128->96: 31.3% match, unusable for random Gaussian data
+lsh_hash_nearest	-	-	-	-	DISCARD	LSH 8-bit hash: 1.4% accuracy finding true nearest centroid, curse of dimensionality
