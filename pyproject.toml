@@ -32,7 +32,7 @@ dependencies = [
 benchmark = ["scikit-learn"]
 
 [project.urls]
-Homepage = "https://github.com/hanxiao/flash-kmeans-mlx"
+Homepage = "https://pypi.org/project/flash-kmeans-mlx/"
 Repository = "https://github.com/hanxiao/flash-kmeans-mlx"
 Issues = "https://github.com/hanxiao/flash-kmeans-mlx/issues"
 
