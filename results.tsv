@@ -21,3 +21,10 @@ contiguous_transpose	0.771	7.7	100	58148472	KEEP	mx.contiguous on transposed cen
 fused_argmax_bias	0.769	7.7	100	58138928	DISCARD	matmul + fused argmax+bias vs addmm + argmax: <0.5% diff, not worth the complexity
 flat_scatter_centroid	0.770	7.7	100	58129904	KEEP	flat scatter_add (no per-batch loop): 45% faster standalone, same compiled; cleaner code
 argmax_tg32	0.765	7.7	100	58137416	KEEP	threadgroup 32 for Metal argmax: 5% faster argmax (1.67ms vs 1.75ms), 0.7% faster overall
+coop_argmax_multirow_unroll	-	-	-	-	DISCARD	cooperative (2/4/8 threads/row), multi-row, loop unroll x2/x4: all ~1.7ms, no gain, bandwidth-limited
+quantized_matmul_4_8bit	-	-	-	-	DISCARD	quantized_matmul 4/8-bit: 7.3ms vs 6.2ms f16, slower due to dequant overhead; 4-bit only 83% match
+k_tiled_running_argmax	-	-	-	-	DISCARD	K-tiled (125/250/500) matmul + running argmax: 13-15ms, 2x slower from multiple small matmuls
+block_masked_mm_coarse	-	-	-	-	DISCARD	block_masked_mm top-2/4/6: 7.7-8.5ms, 13-52% match, block structure incompatible with NN search
+f16_centroid_storage	-	-	-	-	DISCARD	f16 centroids (skip f32 cast): no gain, compiler overlaps cast with previous ops
+transposed_layout	-	-	-	-	DISCARD	(K,D)@(D,N) vs (N,D)@(D,K): 6.5ms vs 5.9ms, standard layout is optimal
+n_split_pipelining	-	-	-	-	DISCARD	2/4 N-splits to overlap addmm/argmax: 7.43ms vs 7.47ms, marginal from half-size overlap
