@@ -19,18 +19,31 @@ def _get_metal_argmax(total_rows, K):
     """Get a cached Metal kernel for fast argmax over axis=-1 on (total_rows, K) f16 data."""
     key = (total_rows, K)
     if key not in _metal_argmax_cache:
+        # Use half4 vectorized loads for 4-wide reads; K must be divisible by 4
+        assert K % 4 == 0, f"K={K} must be divisible by 4 for vectorized Metal argmax"
+        num_vec = K // 4
         source = f'''
             uint n = thread_position_in_grid.x;
             if (n >= {total_rows}u) return;
+
             float best_score = -1e30f;
             uint best_k = 0;
-            uint base = n * {K}u;
-            for (uint k = 0; k < {K}u; k++) {{
-                float val = static_cast<float>(scores[base + k]);
-                if (val > best_score) {{
-                    best_score = val;
-                    best_k = k;
-                }}
+
+            const device half4* scores4 = (const device half4*)(scores + n * {K}u);
+
+            for (uint v = 0; v < {num_vec}u; v++) {{
+                half4 vals = scores4[v];
+                uint base_k = v * 4u;
+
+                float v0 = static_cast<float>(vals[0]);
+                float v1 = static_cast<float>(vals[1]);
+                float v2 = static_cast<float>(vals[2]);
+                float v3 = static_cast<float>(vals[3]);
+
+                if (v0 > best_score) {{ best_score = v0; best_k = base_k; }}
+                if (v1 > best_score) {{ best_score = v1; best_k = base_k + 1u; }}
+                if (v2 > best_score) {{ best_score = v2; best_k = base_k + 2u; }}
+                if (v3 > best_score) {{ best_score = v3; best_k = base_k + 3u; }}
             }}
             out[n] = best_k;
         '''
@@ -47,7 +60,7 @@ def _fast_argmax_f16(scores, B, N, K):
     """Fast argmax over axis=-1 for (B, N, K) f16 scores using custom Metal kernel."""
     total_rows = B * N
     kernel = _get_metal_argmax(total_rows, K)
-    THREADS = 256
+    THREADS = 1024
     grid_size = ((total_rows + THREADS - 1) // THREADS) * THREADS
     flat_scores = scores.reshape(total_rows, K)
     out = kernel(

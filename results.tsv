@@ -8,3 +8,4 @@ f32_addmm_assign	1.336	13.4	100	58127324	DISCARD	f32 addmm instead of f16: 5% sl
 k_chunked_250	1.484	14.8	100	58138344	DISCARD	K-chunked assign K=250: 17% slower, loop+ops overhead > cache benefit
 k_chunked_500	1.442	14.4	100	58148464	DISCARD	K-chunked assign K=500: 14% slower, same issue
 metal_argmax	0.876	8.8	100	58141040	KEEP	custom Metal kernel argmax: 31% faster, mx.argmax was 5.8ms vs 2.2ms
+metal_argmax_vec4_tg1024	0.879	8.8	100	58150520	KEEP	vec4 loads + threadgroup 1024: marginal, commit for cleaner code
