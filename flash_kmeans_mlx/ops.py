@@ -176,44 +176,34 @@ def _centroid_update(
     normalize: bool,
 ) -> mx.array:
     """
-    Core centroid update.
+    Core centroid update using scatter-add.
 
-    Strategy: for each batch element and each cluster k, compute
-        sum_k = sum of x[i] where cluster_ids[i] == k
-        count_k = number of such points
-        centroid_k = sum_k / count_k  (or old_centroids[k] if count_k == 0)
-
-    MLX lacks index_add_, so we use a vectorized approach:
-    Build a (B, K, N) indicator matrix via broadcasting, then matmul with x.
-    This is compile-safe (no mx.eval inside). MLX's lazy evaluation and
-    unified memory handle the memory pressure automatically.
+    Instead of building a (B, K, N) indicator matrix (O(B*K*N) memory),
+    use scatter_add via .at[].add() to accumulate sums directly into
+    a (B, K, D) buffer. Memory: O(B*K*D) vs O(B*K*N).
     """
-    return _centroid_update_full(x, cluster_ids, old_centroids, normalize)
-
-
-def _centroid_update_full(
-    x: mx.array,
-    cluster_ids: mx.array,
-    old_centroids: mx.array,
-    normalize: bool,
-) -> mx.array:
-    """Full vectorized centroid update using indicator matmul."""
     B, N, D = x.shape
     K = old_centroids.shape[1]
 
-    # indicator: (B, K, N) where indicator[b, k, n] = 1 if cluster_ids[b, n] == k
-    k_range = mx.arange(K).reshape(1, K, 1)                    # (1, K, 1)
-    ids_expanded = mx.expand_dims(cluster_ids.astype(mx.int32), axis=1)  # (B, 1, N)
-    indicator = (ids_expanded == k_range).astype(mx.float32)    # (B, K, N)
+    x_f32 = x.astype(mx.float32)
+    ids = cluster_ids.astype(mx.uint32)  # (B, N)
 
-    # sums: (B, K, N) @ (B, N, D) -> (B, K, D)
-    cluster_sums = indicator @ x.astype(mx.float32)
+    results_sums = []
+    results_counts = []
+    for b in range(B):
+        cluster_sums = mx.zeros((K, D), dtype=mx.float32)
+        cluster_counts = mx.zeros((K,), dtype=mx.float32)
+        idx = ids[b]  # (N,)
+        cluster_sums = cluster_sums.at[idx].add(x_f32[b])
+        cluster_counts = cluster_counts.at[idx].add(mx.ones((N,), dtype=mx.float32))
+        results_sums.append(cluster_sums)
+        results_counts.append(cluster_counts)
 
-    # counts: (B, K)
-    cluster_counts = indicator.sum(axis=-1)
+    all_sums = mx.stack(results_sums)      # (B, K, D)
+    all_counts = mx.stack(results_counts)   # (B, K)
 
     return _finalize_centroids(
-        cluster_sums, cluster_counts, old_centroids, x.dtype, normalize
+        all_sums, all_counts, old_centroids, x.dtype, normalize
     )
 
 
