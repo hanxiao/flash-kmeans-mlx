@@ -118,7 +118,9 @@ def euclid_assign(
         # addmm fuses the bias addition into the matmul kernel, avoiding a
         # separate pass over the full NxK score matrix.
         score = mx.addmm(c_bias, x_f16, ct)                 # (B, N, K)
-        return _fast_argmax_f16(score, B, N, K)
+        if K % 4 == 0:
+            return _fast_argmax_f16(score, B, N, K)
+        return mx.argmax(score, axis=-1).astype(mx.uint32)
 
     c_sq = (centroids * centroids).sum(axis=-1)  # (B, K)
 

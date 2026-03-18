@@ -2,6 +2,8 @@
 
 IO-aware batched K-Means for Apple Silicon, ported from [Flash-KMeans](https://github.com/svg-project/flash-kmeans) (Triton/CUDA) to pure MLX.
 
+500K points, 128 dimensions, K=1000 clustered in 0.76s on M3 Ultra -- 160x faster than sklearn. Uses custom Metal kernels for argmax, fused addmm assignment, and multi-iteration compiled execution.
+
 Full Fashion-MNIST (70K samples, 784 dimensions, K=10) clustered in 0.12s on M3 Ultra, 6x faster than sklearn (0.74s). Left: K-Means cluster assignments. Right: ground truth labels. Visualization via [mlx-vis](https://github.com/hanxiao/mlx-vis) UMAP.
 
 ![Fashion-MNIST K-Means vs Ground Truth](assets/fmnist-kmeans-comparison.png)
@@ -59,10 +61,10 @@ All timings on M3 Ultra, float32, single batch. MLX uses `mx.compile`; sklearn u
 
 | N | D | K | Iters | MLX | sklearn | Speedup |
 |---|---|---|-------|-----|---------|---------|
-| 5K | 64 | 50 | 10 | 5ms | 34ms | 6.7x |
-| 50K | 128 | 256 | 20 | 22ms | 1.28s | 58x |
-| 100K | 128 | 1000 | 20 | 149ms | 9.8s | 66x |
-| 500K | 128 | 1000 | 10 | 425ms | 39.8s | 94x |
+| 5K | 64 | 50 | 10 | 2ms | 34ms | 17x |
+| 50K | 128 | 256 | 20 | 7ms | 1.28s | 183x |
+| 100K | 128 | 1000 | 20 | 32ms | 9.8s | 306x |
+| 500K | 128 | 1000 | 10 | 77ms | 39.8s | 517x |
 
 Run the benchmark yourself:
 
