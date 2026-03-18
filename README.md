@@ -73,6 +73,12 @@ uv pip install 'flash-kmeans-mlx[benchmark]'
 python -m flash_kmeans_mlx.benchmark --n 100000 --d 128 --k 1000 --max-iters 20
 ```
 
+### vs H200 GPU
+
+Comparison against the original Flash-KMeans and other PyTorch implementations on NVIDIA H200 (FP16). All methods run D=128, 100 iterations. MLX on M3 Ultra matches or beats naive PyTorch methods on H200, with the gap to the Triton kernel explained by the 37x raw compute difference (27 TFLOPS vs 990 TFLOPS).
+
+![H200 vs M3 Ultra benchmark](assets/h200-vs-mlx-benchmark.png)
+
 ## Correctness
 
 Verified against sklearn with identical initial centroids over 20 iterations. Cluster assignment agreement is 92-99.8% depending on configuration, with inertia difference below 0.01%. The remaining discrepancy comes from float32 vs sklearn's float64 accumulation - boundary points near equidistant cluster borders get assigned differently due to rounding.
