@@ -59,12 +59,31 @@ The `FlashKMeans` class accepts both `(N, D)` and `(B, N, D)` inputs. Set `metri
 
 All timings on M3 Ultra, float32, single batch. MLX uses `mx.compile`; sklearn uses Lloyd's algorithm on CPU (`n_init=1`).
 
-| N | D | K | Iters | MLX | sklearn | Speedup |
-|---|---|---|-------|-----|---------|---------|
-| 5K | 64 | 50 | 10 | 2ms | 34ms | 17x |
-| 50K | 128 | 256 | 20 | 7ms | 1.28s | 183x |
-| 100K | 128 | 1000 | 20 | 32ms | 9.8s | 306x |
-| 500K | 128 | 1000 | 10 | 77ms | 39.8s | 517x |
+| N | D | K | Iters | MLX | sklearn | Speedup | Peak VRAM |
+|---|---|---|-------|-----|---------|---------|-----------|
+| 5K | 64 | 50 | 10 | 2ms | 34ms | 17x | 6 MB |
+| 50K | 128 | 256 | 20 | 7ms | 1.28s | 183x | 536 MB |
+| 100K | 128 | 1000 | 20 | 32ms | 9.8s | 306x | 1.2 GB |
+| 500K | 128 | 1000 | 10 | 77ms | 39.8s | 517x | 4.1 GB |
+
+Peak VRAM is the incremental GPU memory used by the clustering operation itself (excludes pre-existing allocations from other processes). Use `max_mem_gb` to cap memory usage:
+
+| N | D | K | Iters | MLX | Peak VRAM | `max_mem_gb=5` |
+|---|---|---|-------|-----|-----------|----------------|
+| 5K | 64 | 50 | 10 | 2ms | 6 MB | 1 MB |
+| 50K | 128 | 256 | 20 | 7ms | 536 MB | 39 MB |
+| 100K | 128 | 1000 | 20 | 32ms | 1.2 GB | 228 MB |
+| 500K | 128 | 1000 | 10 | 77ms | 4.1 GB | 1.1 GB |
+
+```python
+# Limit peak VRAM to 5 GB
+cluster_ids, centers, n_iters = batch_kmeans_Euclid(
+    x, n_clusters=1000, max_mem_gb=5
+)
+
+# Or via class API
+model = FlashKMeans(d=128, k=1000, max_mem_gb=5)
+```
 
 Run the benchmark yourself:
 
