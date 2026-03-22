@@ -124,6 +124,44 @@ def _init_centroids(x, n_clusters):
     return centroids
 
 
+def _compute_chunk_size_n(B, N, D, K, max_mem_gb):
+    """Compute chunk_size_n for the f16 assignment path given a VRAM budget.
+
+    Returns 0 (no chunking) if the full score matrix fits within budget.
+    """
+    # Fixed allocations (bytes):
+    #   x f32: B*N*D*4, x_f16: B*N*D*2, x_sq: B*N*4
+    #   centroids f32: B*K*D*4, c_f16+ct: B*K*D*2*2
+    #   scatter buffers: B*K*D*4 + B*K*4
+    #   cluster_ids: B*N*4
+    #   MLX compiled graph overhead: ~2x the tensor allocations
+    fixed = (B * N * D * 4  # x
+             + B * N * D * 2  # x_f16
+             + B * N * 4  # x_sq
+             + B * K * D * 4 * 2  # centroids + c_f16/ct
+             + B * K * D * 4  # scatter sums (f32)
+             + B * N * 4  # scatter x_flat reshape
+             + B * K * 4  # scatter counts
+             + B * N * 4)  # cluster_ids
+    # MLX compiled functions keep input/output buffers + temporaries;
+    # empirically ~2.5x the raw tensor sizes for single-iter compiled
+    fixed = int(fixed * 2.5)
+
+    budget = int(max_mem_gb * 1e9)
+    available = budget - fixed
+    if available <= 0:
+        # Data alone exceeds budget; use minimal chunks
+        return max(1024, K)
+
+    # Score matrix per chunk: chunk_n * K * 2 bytes (f16)
+    chunk_n = int(available / (K * 2))
+    chunk_n = max(chunk_n, K)  # at least K rows per chunk
+
+    if chunk_n >= N:
+        return 0  # no chunking needed
+    return chunk_n
+
+
 def batch_kmeans_Euclid(
     x: mx.array,
     n_clusters: int,
@@ -133,6 +171,7 @@ def batch_kmeans_Euclid(
     verbose: bool = False,
     *,
     compiled: bool = True,
+    max_mem_gb: float = 0,
 ) -> tuple:
     """
     Batched K-Means with squared Euclidean distance.
@@ -145,6 +184,8 @@ def batch_kmeans_Euclid(
         init_centroids: (B, K, D) optional initial centroids.
         verbose: print per-iteration shift.
         compiled: use mx.compile for the iteration loop.
+        max_mem_gb: if > 0, limit peak GPU memory to this many GB by
+            chunking the assignment step. 0 = no limit (default).
 
     Returns:
         cluster_ids: (B, N) uint32
@@ -164,30 +205,58 @@ def batch_kmeans_Euclid(
         centroids = init_centroids
     centroids = centroids.reshape(B, n_clusters, D)
 
+    # Compute chunk size for memory-constrained mode
+    chunk_n = 0
+    if max_mem_gb > 0:
+        chunk_n = _compute_chunk_size_n(B, N, D, n_clusters, max_mem_gb)
+        if verbose and chunk_n > 0:
+            print(f"Memory limit {max_mem_gb:.1f} GB: chunking N={N} into chunks of {chunk_n}")
+
+    # When memory-constrained, always use single-iter path. Multi-iter
+    # compiled builds the full graph across all iterations, keeping all
+    # intermediates alive and using ~max_iters * per-iter memory.
+    use_multi_iter = (chunk_n == 0 and max_mem_gb <= 0)
+
     # Fast path: when tol <= 0 and not verbose, skip shift computation
     needs_shift = tol > 0 or verbose
 
     if needs_shift:
-        iter_fn = (_get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True)
-                   if compiled else None)
-        for it in range(max_iters):
-            if compiled:
-                centroids_new, shift, cluster_ids = iter_fn(
-                    x, x_sq, centroids, x_f16
+        if chunk_n > 0:
+            # Memory-constrained single-iter path with chunked assignment
+            for it in range(max_iters):
+                cluster_ids = euclid_assign(
+                    x, centroids, x_sq, chunk_size_n=chunk_n, x_f16=x_f16
                 )
-            else:
-                centroids_new, shift, cluster_ids = _euclid_iter(
-                    x, x_sq, centroids, x_f16=x_f16
-                )
-            mx.eval(centroids_new, shift, cluster_ids)
+                centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
+                diff = (centroids_new.astype(mx.float32) - centroids.astype(mx.float32))
+                shift = mx.sqrt((diff * diff).sum(axis=-1)).max()
+                mx.eval(centroids_new, shift, cluster_ids)
+                if verbose:
+                    print(f"Iter {it}, center shift: {shift.item():.6f}")
+                if shift.item() < tol:
+                    break
+                centroids = centroids_new
+        else:
+            iter_fn = (_get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True)
+                       if compiled else None)
+            for it in range(max_iters):
+                if compiled:
+                    centroids_new, shift, cluster_ids = iter_fn(
+                        x, x_sq, centroids, x_f16
+                    )
+                else:
+                    centroids_new, shift, cluster_ids = _euclid_iter(
+                        x, x_sq, centroids, x_f16=x_f16
+                    )
+                mx.eval(centroids_new, shift, cluster_ids)
 
-            if verbose:
-                print(f"Iter {it}, center shift: {shift.item():.6f}")
-            if shift.item() < tol:
-                break
-            centroids = centroids_new
+                if verbose:
+                    print(f"Iter {it}, center shift: {shift.item():.6f}")
+                if shift.item() < tol:
+                    break
+                centroids = centroids_new
     else:
-        if compiled:
+        if compiled and use_multi_iter:
             # Use multi-iteration compiled function for maximum throughput.
             # Runs all iterations inside a single compiled graph, enabling
             # cross-iteration optimization by the MLX compiler.
@@ -196,6 +265,22 @@ def batch_kmeans_Euclid(
             centroids, cluster_ids = multi_fn(x, x_sq, centroids, x_f16)
             mx.eval(centroids, cluster_ids)
             it = max_iters - 1
+        elif max_mem_gb > 0:
+            # Memory-constrained single-iter path (with optional chunking)
+            iter_fn_ns = (_get_compiled_euclid_iter(B, N, D, n_clusters, use_f16=True, no_shift=True)
+                          if compiled and chunk_n == 0 else None)
+            for it in range(max_iters):
+                if iter_fn_ns is not None:
+                    centroids_new, cluster_ids = iter_fn_ns(
+                        x, x_sq, centroids, x_f16
+                    )
+                else:
+                    cluster_ids = euclid_assign(
+                        x, centroids, x_sq, chunk_size_n=chunk_n, x_f16=x_f16
+                    )
+                    centroids_new = centroid_update_euclid(x, cluster_ids, centroids)
+                mx.eval(centroids_new, cluster_ids)
+                centroids = centroids_new
         else:
             eval_every = 10
             for it in range(max_iters):

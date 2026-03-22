@@ -49,6 +49,7 @@ class FlashKMeans:
         dtype: Optional[mx.Dtype] = None,
         metric: str = "euclidean",
         compiled: bool = True,
+        max_mem_gb: float = 0,
     ):
         self.d = int(d)
         self.k = int(k)
@@ -59,6 +60,7 @@ class FlashKMeans:
         self.dtype = dtype
         self.metric = metric
         self.compiled = compiled
+        self.max_mem_gb = float(max_mem_gb)
 
         self.centroids_b: Optional[mx.array] = None
         self.cluster_ids_b: Optional[mx.array] = None
@@ -98,6 +100,10 @@ class FlashKMeans:
             raise ValueError(f"Unknown metric: {self.metric!r}. "
                              f"Use 'euclidean', 'cosine', or 'dot'.")
 
+        extra_kwargs = {}
+        if self.metric == "euclidean":
+            extra_kwargs["max_mem_gb"] = self.max_mem_gb
+
         cluster_ids_b, centroids_b, _ = kmeans_fn(
             x_b,
             self.k,
@@ -105,6 +111,7 @@ class FlashKMeans:
             tol=self.tol,
             verbose=self.verbose,
             compiled=self.compiled,
+            **extra_kwargs,
         )
 
         self.centroids_b = centroids_b

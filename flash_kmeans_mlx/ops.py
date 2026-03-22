@@ -115,6 +115,22 @@ def euclid_assign(
         ct = mx.contiguous(mx.transpose(c_f16, axes=(0, 2, 1)))  # (B, D, K) contiguous
         c_sq = (c_f16 * c_f16).sum(axis=-1)                 # (B, K)
         c_bias = (-0.5 * c_sq).astype(mx.float16)[:, None, :]  # (B, 1, K)
+
+        if chunk_size_n > 0 and chunk_size_n < N:
+            # Chunked f16 path to limit peak VRAM from score matrix
+            parts = []
+            for n_start in range(0, N, chunk_size_n):
+                n_end = min(n_start + chunk_size_n, N)
+                x_chunk = x_f16[:, n_start:n_end, :]
+                score_chunk = mx.addmm(c_bias, x_chunk, ct)
+                cn = n_end - n_start
+                if K % 4 == 0:
+                    ids_chunk = _fast_argmax_f16(score_chunk, B, cn, K)
+                else:
+                    ids_chunk = mx.argmax(score_chunk, axis=-1).astype(mx.uint32)
+                parts.append(ids_chunk)
+            return mx.concatenate(parts, axis=1)
+
         # addmm fuses the bias addition into the matmul kernel, avoiding a
         # separate pass over the full NxK score matrix.
         score = mx.addmm(c_bias, x_f16, ct)                 # (B, N, K)
