@@ -66,7 +66,7 @@ All timings on M3 Ultra, float32, single batch. MLX uses `mx.compile`; sklearn u
 | 100K | 128 | 1000 | 20 | 32ms | 9.8s | 306x | 1.2 GB |
 | 500K | 128 | 1000 | 10 | 77ms | 39.8s | 517x | 4.1 GB |
 
-Peak VRAM is the incremental GPU memory used by the clustering operation itself (excludes pre-existing allocations from other processes). Use `max_mem_gb` to cap memory usage:
+Use `max_mem_gb` to cap memory usage:
 
 | N | D | K | Iters | MLX | Peak VRAM | `max_mem_gb=5` |
 |---|---|---|-------|-----|-----------|----------------|
